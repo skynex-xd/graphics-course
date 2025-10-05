@@ -98,7 +98,7 @@ private:
 
   glm::mat4x4 worldViewProj;
   glm::mat4x4 lightMatrix;
-  glm::vec3   lightPos;
+  glm::vec3   lightPos = glm::vec3(10.0f, 10.0f, 1.0f);
 
   glm::vec3 lightColor_      = glm::vec3(1.0f, 1.0f, 1.0f);
   float lightIntensity_  = 1.0f;
