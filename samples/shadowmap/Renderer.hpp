@@ -45,4 +45,8 @@ private:
   std::unique_ptr<ImGuiRenderer> guiRenderer;
 
   std::unique_ptr<WorldRenderer> worldRenderer;
+  bool useVsync_ = true;
+  bool wantRecreateSwapchain_ = false;
+  bool showDemo_ = false;
+  FramePacket lastPacket_{};
 };

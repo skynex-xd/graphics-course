@@ -1,5 +1,9 @@
 include(${PROJECT_SOURCE_DIR}/cmake/common.cmake)
 
-add_subdirectory(local_shadertoy1)
-add_subdirectory(local_shadertoy2)
-add_subdirectory(model_bakery)
+# add_subdirectory(local_shadertoy1)
+# add_subdirectory(local_shadertoy2)
+# add_subdirectory(model_bakery)
+add_subdirectory(imgui)
+# add_subdirectory(particles)
+# add_subdirectory(particles2)
+# add_subdirectory(aa)
