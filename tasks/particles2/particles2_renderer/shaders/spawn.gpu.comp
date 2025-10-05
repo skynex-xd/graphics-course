@@ -1,0 +1,76 @@
+#version 460
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform SpawnPC {
+    float dtSpawn;
+    float rate;
+    float emitRemainder;
+    uint  toSpawn;
+
+    vec3  emitterPos;   float _p0;
+    vec3  emitterVel;   float _p1;
+    vec3  emitterDir;   float emitterSpread;
+
+    float lifeMin,  lifeMax;
+    float speedMin, speedMax;
+    float sizeMin,  sizeMax;
+
+    uint  capacity; uint _pad0; uint _pad1; uint _pad2;
+} pc;
+
+struct ParticleGpu {
+    vec4 pos_size;
+    vec4 vel_age;
+    vec4 col_life;
+};
+
+layout(set=0, binding=0, std430) writeonly buffer OutBuf { ParticleGpu outP[]; };
+layout(set=0, binding=1, std430) buffer Alive { uint aliveCount; };
+
+uint wang_hash(uint s) {
+    s = (s ^ 61u) ^ (s >> 16u);
+    s *= 9u;
+    s = s ^ (s >> 4u);
+    s *= 0x27d4eb2du;
+    s = s ^ (s >> 15u);
+    return s;
+}
+float frand(inout uint s){ s = wang_hash(s); return float(s) * (1.0/4294967296.0); }
+
+vec3 rand_dir_in_cone(inout uint seed, vec3 axis, float angle) {
+    float u = frand(seed);
+    float v = frand(seed);
+    float theta = 6.28318530718 * u;
+    float z = 1.0 - v * (1.0 - cos(angle));
+    float r = sqrt(max(0.0, 1.0 - z*z));
+    vec3 local = vec3(r*cos(theta), r*sin(theta), z);
+    vec3 w = normalize(axis);
+    vec3 a = (abs(w.x) > 0.9) ? vec3(0,1,0) : vec3(1,0,0);
+    vec3 uvec = normalize(cross(a, w));
+    vec3 vvec = cross(w, uvec);
+    return normalize(uvec*local.x + vvec*local.y + w*local.z);
+}
+
+void main(){
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.toSpawn) return;
+    uint idx = atomicAdd(aliveCount, 1u);
+    if (idx >= pc.capacity) {
+        atomicAdd(aliveCount, 0xffffffffu);
+        atomicMin(aliveCount, pc.capacity);
+        return;
+    }
+
+    uint seed = (idx ^ (i*747796405u)) ^ 0x9e3779b9u;
+    float life = mix(pc.lifeMin,  pc.lifeMax,  frand(seed));
+    float spd  = mix(pc.speedMin, pc.speedMax, frand(seed));
+    float size = mix(pc.sizeMin,  pc.sizeMax,  frand(seed));
+
+    vec3 dir = rand_dir_in_cone(seed, pc.emitterDir, pc.emitterSpread);
+    vec3 vel = pc.emitterVel + dir * spd;
+    vec3 pos = pc.emitterPos;
+
+    outP[idx].pos_size = vec4(pos, size);
+    outP[idx].vel_age  = vec4(vel, 0.0);
+    outP[idx].col_life = vec4(1.0, 1.0, 1.0, life);
+}

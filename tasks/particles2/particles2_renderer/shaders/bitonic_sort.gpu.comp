@@ -1,0 +1,83 @@
+#version 460
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform PC {
+    uint mode;
+    uint j;
+    uint k;
+    uint count;
+    uint shift;
+} pc;
+
+layout(set=0, binding=0, std430) buffer Keys    { float keys[]; };
+layout(set=0, binding=1, std430) buffer Indices { uint  idxs[]; };
+layout(set=0, binding=2, std430) buffer Alive   { uint  aliveCount; };
+layout(set=0, binding=3, std430) buffer Bins    { uint  bins[]; };
+layout(set=0, binding=4, std430) buffer IdxTmp  { uint  idxsTmp[]; };
+
+uint nextPow2(uint v){ v=max(1u,v); v--; v|=v>>1; v|=v>>2; v|=v>>4; v|=v>>8; v|=v>>16; v++; return v; }
+uint floatFlip(uint u){ uint s=u>>31; uint mask=(s!=0u)?0xFFFFFFFFu:0x80000000u; return u ^ mask; }
+
+void bitonic_step() {
+    uint i   = gl_GlobalInvocationID.x;
+    uint N2  = nextPow2(aliveCount);
+    if (i >= N2) return;
+
+    uint ixj = i ^ pc.j;
+    if (ixj <= i) return;
+
+    bool up = ((i & pc.k) == 0u);
+
+    float ki = keys[i];
+    float kj = keys[ixj];
+
+    bool sw = up ? (ki > kj) : (ki < kj);
+    if (sw) {
+        keys[i]   = kj; keys[ixj] = ki;
+        uint ti    = idxs[i];
+        idxs[i]    = idxs[ixj];
+        idxs[ixj]  = ti;
+    }
+}
+
+void radix_hist() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.count) return;
+    uint ku = floatBitsToUint(keys[i]);
+    uint r  = (floatFlip(ku) >> pc.shift) & 255u;
+    atomicAdd(bins[r], 1u);
+}
+
+shared uint s[256];
+
+void radix_scan256() {
+    uint tid = gl_LocalInvocationID.x;
+    if (tid < 256u) s[tid] = bins[tid];
+    barrier();
+
+    for (uint off=1u; off<256u; off<<=1u) {
+        uint t = (tid>=off) ? s[tid-off] : 0u;
+        barrier();
+        s[tid] += t;
+        barrier();
+    }
+
+    uint excl = (tid==0u) ? 0u : s[tid-1u];
+    if (tid < 256u) bins[tid] = excl;
+}
+
+void radix_scatter() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= pc.count) return;
+    uint ku = floatBitsToUint(keys[i]);
+    uint r  = (floatFlip(ku) >> pc.shift) & 255u;
+    uint dst = atomicAdd(bins[r], 1u);
+    idxsTmp[dst] = idxs[i];
+}
+
+void main(){
+    if      (pc.mode==0u) bitonic_step();
+    else if (pc.mode==1u) radix_hist();
+    else if (pc.mode==2u) radix_scan256();
+    else if (pc.mode==3u) radix_scatter();
+}
