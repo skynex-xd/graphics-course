@@ -1,0 +1,16 @@
+#version 460
+layout(local_size_x = 1) in;
+
+layout(set=0, binding=0, std430) buffer Alive    { uint aliveCount; };
+layout(set=0, binding=1, std430) buffer Indirect { uint cmd[]; };
+layout(push_constant) uniform PC { uint useVisible; } pc;
+layout(set=0, binding=2, std430) readonly buffer Visible { uint visibleCount; };
+
+void main() {
+    uint count = (pc.useVisible != 0u) ? visibleCount : aliveCount;
+
+    cmd[0] = 1u;
+    cmd[1] = count;
+    cmd[2] = 0u;
+    cmd[3] = 0u;
+}
